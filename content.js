@@ -1,70 +1,131 @@
 let socket;
 let videoElement;
-let roomId;
+let isHost = false;
+let roomId = null;
+let lastTimeUpdate = 0;
+const SYNC_THRESHOLD = 2; // seconds
 
-function initializeSync() {
-    // Find the video element on BluTV
-    videoElement = document.querySelector('video');
+// Initialize WebSocket connection
+function initializeWebSocket() {
+    socket = new WebSocket('wss://blutv-party-production.up.railway.app:8080');
     
-    if (!videoElement) {
-        console.error('No video element found');
-        return;
-    }
+    socket.onopen = () => {
+        console.log('Connected to server');
+        if (roomId) {
+            socket.send(JSON.stringify({
+                type: 'join',
+                roomId: roomId
+            }));
+        }
+    };
 
-    // Load Socket.io client
-    const script = document.createElement('script');
-    script.src = 'https://cdn.socket.io/4.7.4/socket.io.min.js';
-    document.head.appendChild(script);
+    socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        handleSocketMessage(data);
+    };
 
-    script.onload = () => {
-        // Connect to your server
-        socket = io('https://blutv-party-production.up.railway.app:8080');
+    socket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+    };
 
-        // Listen for video events
-        videoElement.addEventListener('play', handleVideoEvent);
-        videoElement.addEventListener('pause', handleVideoEvent);
-        videoElement.addEventListener('seeked', handleVideoEvent);
-
-        // Listen for updates from other users
-        socket.on('videoStateUpdate', (data) => {
-            if (data.type === 'play') {
-                videoElement.play();
-            } else if (data.type === 'pause') {
-                videoElement.pause();
-            } else if (data.type === 'seeked') {
-                videoElement.currentTime = data.currentTime;
-            }
-        });
+    socket.onclose = () => {
+        console.log('Disconnected from server');
+        // Attempt to reconnect after 5 seconds
+        setTimeout(initializeWebSocket, 5000);
     };
 }
 
-function handleVideoEvent(event) {
-    if (!socket || !roomId) return;
+// Handle incoming WebSocket messages
+function handleSocketMessage(data) {
+    if (!videoElement) return;
 
-    const videoState = {
-        type: event.type,
+    switch (data.type) {
+        case 'sync':
+            if (Math.abs(videoElement.currentTime - data.currentTime) > SYNC_THRESHOLD) {
+                videoElement.currentTime = data.currentTime;
+            }
+            if (data.isPlaying) {
+                videoElement.play();
+            } else {
+                videoElement.pause();
+            }
+            break;
+        case 'joined':
+            if (isHost) {
+                sendVideoState();
+            }
+            break;
+    }
+}
+
+// Send current video state to server
+function sendVideoState() {
+    if (!socket || !videoElement) return;
+
+    const now = Date.now();
+    if (now - lastTimeUpdate < 1000) return; // Throttle updates to once per second
+    lastTimeUpdate = now;
+
+    socket.send(JSON.stringify({
+        type: 'sync',
         currentTime: videoElement.currentTime,
         isPlaying: !videoElement.paused,
         roomId: roomId
-    };
-
-    socket.emit('videoEvent', videoState);
+    }));
 }
 
-function connectToRoom(newRoomId) {
-    roomId = newRoomId;
-    if (socket) {
-        socket.emit('joinRoom', roomId);
-    }
+// Initialize video element observer
+function initializeVideoObserver() {
+    const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            const videoElements = document.querySelectorAll('video');
+            if (videoElements.length > 0) {
+                videoElement = videoElements[0];
+                setupVideoListeners();
+                observer.disconnect();
+                break;
+            }
+        }
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+}
+
+// Setup video element event listeners
+function setupVideoListeners() {
+    if (!videoElement) return;
+
+    videoElement.addEventListener('play', sendVideoState);
+    videoElement.addEventListener('pause', sendVideoState);
+    videoElement.addEventListener('seeking', sendVideoState);
+    videoElement.addEventListener('timeupdate', () => {
+        if (isHost) {
+            sendVideoState();
+        }
+    });
 }
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'joinRoom') {
-        connectToRoom(request.roomId);
-        sendResponse({status: 'connected'});
+    switch (request.type) {
+        case 'initParty':
+            roomId = request.roomId;
+            isHost = request.isHost;
+            initializeWebSocket();
+            break;
+        case 'leaveParty':
+            if (socket) {
+                socket.close();
+            }
+            roomId = null;
+            isHost = false;
+            break;
     }
+    sendResponse({ success: true });
 });
 
-// Initialize when the page loads
-initializeSync(); 
+// Start observing for video element
+initializeVideoObserver(); 
