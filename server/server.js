@@ -5,13 +5,9 @@ const cors = require('cors');
 
 const app = express();
 
-// Enable CORS with specific origins
+// Enable CORS with any origin for easier testing
 app.use(cors({
-  origin: [
-    'https://*.blutv.com',
-    'http://*.blutv.com',
-    'chrome-extension://*'
-  ],
+  origin: '*',  // Allow any origin during development
   methods: ['GET', 'POST'],
   credentials: true
 }));
@@ -51,11 +47,7 @@ const httpServer = createServer(app);
 // Configure Socket.IO with all necessary options
 const io = new Server(httpServer, {
   cors: {
-    origin: [
-      'https://*.blutv.com',
-      'http://*.blutv.com',
-      'chrome-extension://*'
-    ],
+    origin: '*',  // Allow any origin during development
     methods: ["GET", "POST"],
     credentials: true
   },

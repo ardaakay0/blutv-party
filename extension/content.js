@@ -35,34 +35,22 @@ function initializeConnection() {
   console.log(`🔄 Connecting to server at ${serverUrl}`);
   updateConnectionStatus(ConnectionState.CONNECTING);
 
-  // Load Socket.IO client from extension
-  if (typeof io === 'undefined') {
-    console.log('Loading Socket.IO client...');
-    const script = document.createElement('script');
-    
-    // Use the local Socket.IO client file
-    script.src = chrome.runtime.getURL('socket.io.min.js');
-    
-    script.onload = () => {
-      console.log('✅ Socket.IO client loaded');
-      connectSocket();
-    };
-    
-    script.onerror = (error) => {
-      console.error('❌ Failed to load Socket.IO client:', error);
-      updateConnectionStatus(ConnectionState.ERROR, 'Failed to load Socket.IO client');
-    };
-    
-    document.head.appendChild(script);
-  } else {
-    connectSocket();
-  }
+  // Connect directly since Socket.IO is already loaded via content_scripts
+  connectSocket();
 }
 
 // Connect to Socket.IO server
 function connectSocket() {
   try {
     console.log(`Attempting to connect to: ${serverUrl}`);
+    
+    // Check if io is defined
+    if (typeof io === 'undefined') {
+      console.error('❌ Socket.IO client not loaded');
+      updateConnectionStatus(ConnectionState.ERROR, 'Socket.IO client not loaded');
+      return;
+    }
+    
     socket = io(serverUrl, {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 5,

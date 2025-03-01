@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Socket.IO Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background-color: #f9f9f9;
+        }
+        button {
+            padding: 10px 16px;
+            background-color: #1a73e8;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            margin-top: 10px;
+        }
+        .status {
+            padding: 10px;
+            margin-top: 10px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .log {
+            height: 200px;
+            overflow-y: auto;
+            background-color: #333;
+            color: #fff;
+            padding: 10px;
+            font-family: monospace;
+            border-radius: 4px;
+        }
+        .success {
+            color: #4caf50;
+        }
+        .error {
+            color: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <h1>Socket.IO Test Page</h1>
+    
+    <div class="card">
+        <h2>Socket.IO Client Test</h2>
+        <p>This page tests if the Socket.IO client can be properly loaded and used.</p>
+        <div class="status" id="status">Status: Not tested</div>
+        <button id="testSocketIO">Test Socket.IO Loading</button>
+    </div>
+    
+    <div class="card">
+        <h2>Connection Test</h2>
+        <p>Test connection to a Socket.IO server:</p>
+        <input type="text" id="serverUrl" value="http://localhost:8080" style="width: 300px; padding: 8px; margin-right: 10px;">
+        <button id="connectServer">Connect</button>
+        <div class="status" id="connectionStatus">Not connected</div>
+    </div>
+    
+    <div class="card">
+        <h2>Log</h2>
+        <div class="log" id="log"></div>
+    </div>
+    
+    <script src="socket.io.min.js"></script>
+    <script>
+        // Log function
+        function log(message, type = 'info') {
+            const logElem = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = type;
+            entry.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logElem.appendChild(entry);
+            logElem.scrollTop = logElem.scrollHeight;
+        }
+        
+        // Test Socket.IO loading
+        document.getElementById('testSocketIO').addEventListener('click', () => {
+            const statusElem = document.getElementById('status');
+            
+            if (typeof io !== 'undefined') {
+                statusElem.innerHTML = '<span class="success">SUCCESS: Socket.IO is loaded!</span>';
+                log('Socket.IO client loaded successfully', 'success');
+            } else {
+                statusElem.innerHTML = '<span class="error">ERROR: Socket.IO is not loaded</span>';
+                log('Failed to load Socket.IO client', 'error');
+            }
+        });
+        
+        // Test connection to server
+        document.getElementById('connectServer').addEventListener('click', () => {
+            const serverUrl = document.getElementById('serverUrl').value;
+            const statusElem = document.getElementById('connectionStatus');
+            
+            try {
+                log(`Attempting to connect to: ${serverUrl}`);
+                statusElem.textContent = 'Connecting...';
+                
+                if (typeof io === 'undefined') {
+                    throw new Error('Socket.IO client not loaded');
+                }
+                
+                const socket = io(serverUrl, {
+                    transports: ['websocket', 'polling'],
+                    reconnectionAttempts: 3,
+                    timeout: 5000
+                });
+                
+                socket.on('connect', () => {
+                    log(`Connected to server with ID: ${socket.id}`, 'success');
+                    statusElem.innerHTML = `<span class="success">Connected! Socket ID: ${socket.id}</span>`;
+                });
+                
+                socket.on('connect_error', (error) => {
+                    log(`Connection error: ${error.message}`, 'error');
+                    statusElem.innerHTML = `<span class="error">Connection error: ${error.message}</span>`;
+                });
+                
+                socket.on('disconnect', (reason) => {
+                    log(`Disconnected: ${reason}`);
+                    statusElem.textContent = `Disconnected: ${reason}`;
+                });
+                
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                statusElem.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+            }
+        });
+        
+        // Initial status check
+        window.addEventListener('load', () => {
+            const statusElem = document.getElementById('status');
+            
+            if (typeof io !== 'undefined') {
+                statusElem.innerHTML = '<span class="success">Socket.IO is loaded!</span>';
+                log('Socket.IO client loaded on page load', 'success');
+            } else {
+                statusElem.innerHTML = '<span class="error">Socket.IO is not loaded</span>';
+                log('Socket.IO client not detected on page load', 'error');
+            }
+        });
+    </script>
+</body>
+</html>

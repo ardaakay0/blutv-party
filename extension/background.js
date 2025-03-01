@@ -4,9 +4,19 @@ const rooms = new Map();
 // Keep track of tabs where content script is loaded
 const contentScriptTabs = new Set();
 
+// Log function for debugging
+function log(message, data) {
+  const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
+  if (data) {
+    console.log(`[${timestamp}] ${message}`, data);
+  } else {
+    console.log(`[${timestamp}] ${message}`);
+  }
+}
+
 // Handle extension installation
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('BluTV Party extension installed');
+  log('BluTV Party extension installed');
 });
 
 // Handle messages from content scripts
@@ -15,11 +25,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
   switch (request.type) {
     case 'checkContentScript':
+      log(`Checking if content script is loaded in tab ${request.tabId}`, contentScriptTabs.has(request.tabId));
       sendResponse({ isLoaded: contentScriptTabs.has(request.tabId) });
       break;
 
     case 'injectContentScript':
+      log(`Injecting content script into tab ${request.tabId}`);
       injectContentScript(request.tabId).then(success => {
+        log(`Content script injection ${success ? 'succeeded' : 'failed'} for tab ${request.tabId}`);
         sendResponse({ success });
       });
       break;
@@ -27,6 +40,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case 'connectionStatus':
       // Update the extension badge
       updateBadge(tabId, request.connected);
+      
+      // Log connection state changes
+      log(`Connection status update for tab ${tabId}`, {
+        state: request.status,
+        connected: request.connected,
+        isHost: request.isHost,
+        message: request.message
+      });
       
       // Store room information for potentially reconnecting
       if (request.connected && request.roomId) {
@@ -76,6 +97,7 @@ chrome.runtime.onUpdateAvailable.addListener(() => {
 async function injectContentScript(tabId) {
     // Don't inject if already loaded
     if (contentScriptTabs.has(tabId)) {
+        log(`Content script already loaded in tab ${tabId}`);
         return true;
     }
 
@@ -83,20 +105,33 @@ async function injectContentScript(tabId) {
         // Check if we can communicate with existing content script
         try {
             await chrome.tabs.sendMessage(tabId, { type: 'ping' });
+            log(`Content script responded to ping in tab ${tabId}`);
             contentScriptTabs.add(tabId);
             return true;
         } catch (error) {
+            log(`Error pinging content script in tab ${tabId}`, error);
             // Content script not loaded, proceed with injection
         }
 
+        log(`Injecting socket.io.min.js and content.js into tab ${tabId}`);
+        
+        // Inject Socket.IO first
+        await chrome.scripting.executeScript({
+            target: { tabId },
+            files: ['socket.io.min.js']
+        });
+        
+        // Then inject content script
         await chrome.scripting.executeScript({
             target: { tabId },
             files: ['content.js']
         });
+        
         contentScriptTabs.add(tabId);
+        log(`Successfully injected scripts into tab ${tabId}`);
         return true;
     } catch (error) {
-        console.error('Failed to inject content script:', error);
+        log(`Failed to inject content script into tab ${tabId}`, error);
         return false;
     }
 }
@@ -105,6 +140,7 @@ async function injectContentScript(tabId) {
 chrome.webNavigation.onCompleted.addListener(async (details) => {
     // Only handle main frame navigation
     if (details.frameId === 0 && details.url.includes('blutv.com')) {
+        log(`Navigation completed in tab ${details.tabId} to ${details.url}`);
         await injectContentScript(details.tabId);
     }
 });
@@ -112,12 +148,14 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
 // Listen for tab updates
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     if (changeInfo.status === 'complete' && tab.url?.includes('blutv.com')) {
+        log(`Tab ${tabId} updated to ${tab.url}`);
         injectContentScript(tabId);
     }
 });
 
 // Listen for tab removal
 chrome.tabs.onRemoved.addListener((tabId) => {
+    log(`Tab ${tabId} removed`);
     contentScriptTabs.delete(tabId);
     
     // Remove any rooms associated with this tab
