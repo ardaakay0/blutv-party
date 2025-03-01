@@ -4,22 +4,24 @@
   "version": "1.0",
   "description": "Watch BluTV content synchronously with friends",
   "permissions": [
-    "tabs",
     "storage",
-    "activeTab"
+    "tabs",
+    "scripting",
+    "webNavigation"
   ],
   "host_permissions": [
-    "https://*.blutv.com/*",
-    "https://blutv-party-production.up.railway.app/*"
+    "*://*.blutv.com/*"
   ],
   "content_scripts": [
     {
-      "matches": ["https://*.blutv.com/*"],
-      "js": ["content.js"]
+      "matches": ["*://*.blutv.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
     }
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "action": {
     "default_popup": "popup.html"
