@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const peerCountSpan = document.getElementById('peerCount');
     const errorDiv = document.getElementById('error');
     const serverUrlInput = document.getElementById('serverUrl');
+    const serverInfoLink = document.getElementById('serverInfoLink');
 
     let currentTabId = null;
     let currentUrl = null;
@@ -214,6 +215,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Show server info modal
+    serverInfoLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        document.getElementById('serverInfoModal').style.display = 'block';
+    });
+
+    // Close server info modal
+    document.getElementById('closeServerInfo').addEventListener('click', () => {
+        document.getElementById('serverInfoModal').style.display = 'none';
+    });
+
+    // When clicking outside the modal, close it
+    window.addEventListener('click', (event) => {
+        const modal = document.getElementById('serverInfoModal');
+        if (event.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+
     // Get or validate server URL
     function getServerUrl() {
         let url = serverUrlInput.value.trim();
@@ -227,6 +247,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!url.startsWith('http://') && !url.startsWith('https://')) {
             url = 'http://' + url;
             serverUrlInput.value = url;
+        }
+        
+        // Warn if using localhost for non-host
+        if (url.includes('localhost') || url.includes('127.0.0.1')) {
+            showMessage('Using localhost - only works when server is on your computer', 5000);
         }
         
         return url;

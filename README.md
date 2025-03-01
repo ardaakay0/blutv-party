@@ -29,7 +29,14 @@ npm install
 npm start
 ```
 
-The server will start and display its IP address. Copy this address to share with friends.
+When the server starts, it will display its IP address and port like this:
+```
+Server running on port 8080
+Available on:
+  http://192.168.1.5:8080
+```
+
+**IMPORTANT**: Note down this IP address - this is what everyone will need to use to connect to your server, NOT "localhost".
 
 ### Step 2: Install the Extension (Everyone)
 
@@ -42,7 +49,7 @@ The server will start and display its IP address. Copy this address to share wit
 
 1. Navigate to any BluTV video
 2. Click the BluTV Party extension icon
-3. Enter the server URL (the IP address and port from Step 1)
+3. Enter the server URL - use the IP address shown when you started the server, like: `http://192.168.1.5:8080`
 4. Click "Create New Room"
 5. Share the Room ID with your friends
 
@@ -50,19 +57,38 @@ The server will start and display its IP address. Copy this address to share wit
 
 1. Navigate to the same BluTV video
 2. Click the BluTV Party extension icon
-3. Enter the server URL (same as the host)
+3. Enter the server URL (the IP address from Step 1, NOT "localhost")
 4. Enter the Room ID shared by the host
 5. Click "Join"
 
+## Connection Types
+
+### Same Local Network (Same WiFi)
+
+If everyone is on the same WiFi network:
+1. Use the local IP address displayed when the server starts (looks like `192.168.x.x`)
+2. Everyone enters this address in the Server URL field
+
+### Different Networks (Internet)
+
+To connect with people on different networks:
+
+#### Option 1: Port Forwarding
+1. Access your router's admin panel (usually http://192.168.1.1)
+2. Set up port forwarding for port 8080 to your computer
+3. Find your public IP (visit whatismyip.com)
+4. Share this public IP with port 8080 with others (http://your.public.ip:8080)
+
+#### Option 2: Use ngrok (Easiest)
+1. Install [ngrok](https://ngrok.com/)
+2. Run `ngrok http 8080`
+3. Share the https URL ngrok provides
+4. Everyone uses this URL for the server connection
+
+#### Option 3: Cloud Server
+For a permanent solution, deploy the server to a cloud provider like AWS, Google Cloud, or Heroku.
+
 ## Advanced Configuration
-
-### Using a Public Server
-
-If you want to make the server accessible outside your local network:
-
-1. Configure port forwarding on your router (forward port 8080 to your computer)
-2. Use your public IP address when sharing the server URL
-3. Consider using a service like [ngrok](https://ngrok.com/) for temporary public access
 
 ### Changing the Server Port
 
@@ -76,7 +102,9 @@ If port 8080 is already in use:
 
 ### Connection Issues
 
-- Ensure everyone is using the same server URL
+- Make sure you're using the correct server URL - not "localhost"
+  - For local network: use the server's local IP (192.168.x.x)
+  - For internet: use public IP or ngrok URL
 - Verify the server is running before trying to connect
 - Check firewall settings if connecting outside your network
 - Try refreshing the BluTV page and reconnecting

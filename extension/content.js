@@ -35,21 +35,21 @@ function initializeConnection() {
   console.log(`🔄 Connecting to server at ${serverUrl}`);
   updateConnectionStatus(ConnectionState.CONNECTING);
 
-  // Load Socket.IO client from CDN if it hasn't been loaded
+  // Load Socket.IO client from extension
   if (typeof io === 'undefined') {
     console.log('Loading Socket.IO client...');
     const script = document.createElement('script');
-    script.src = 'https://cdn.socket.io/4.7.4/socket.io.min.js';
-    script.integrity = 'sha384-Gr6Lu2Ajx28mzwyVR8CFkULdCU7kMlZ9UthllibdOSo6qAiN+yXNHqtgdTvFXMT4';
-    script.crossOrigin = 'anonymous';
+    
+    // Use the local Socket.IO client file
+    script.src = chrome.runtime.getURL('socket.io.min.js');
     
     script.onload = () => {
       console.log('✅ Socket.IO client loaded');
       connectSocket();
     };
     
-    script.onerror = () => {
-      console.error('❌ Failed to load Socket.IO client');
+    script.onerror = (error) => {
+      console.error('❌ Failed to load Socket.IO client:', error);
       updateConnectionStatus(ConnectionState.ERROR, 'Failed to load Socket.IO client');
     };
     
@@ -62,6 +62,7 @@ function initializeConnection() {
 // Connect to Socket.IO server
 function connectSocket() {
   try {
+    console.log(`Attempting to connect to: ${serverUrl}`);
     socket = io(serverUrl, {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 5,
