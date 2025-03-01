@@ -26,4 +26,4 @@ Watch BluTV content synchronously with friends! This Chrome extension allows you
 The server is deployed on Railway.app at `blutv-party-production.up.railway.app`
 
 ## Installation Guide
-Visit [https://[your-github-username].github.io/blutv-party](https://[your-github-username].github.io/blutv-party) for installation instructions.
+Visit [https://ardaakay0.github.io/blutv-party](https://[your-github-username].github.io/blutv-party) for installation instructions.
