@@ -10,7 +10,8 @@ function initializeWebSocket() {
     socket = new WebSocket('wss://blutv-party-production.up.railway.app:8080');
     
     socket.onopen = () => {
-        console.log('Connected to server');
+        console.log('✅ Connected to server');
+        chrome.runtime.sendMessage({ type: 'connectionStatus', connected: true });
         if (roomId) {
             socket.send(JSON.stringify({
                 type: 'join',
@@ -25,7 +26,8 @@ function initializeWebSocket() {
     };
 
     socket.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('❌ WebSocket error:', error);
+        chrome.runtime.sendMessage({ type: 'connectionStatus', connected: false });
     };
 
     socket.onclose = () => {
