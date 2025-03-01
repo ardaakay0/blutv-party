@@ -6,84 +6,122 @@ let roomId = null;
 let lastTimeUpdate = 0;
 const SYNC_THRESHOLD = 2; // seconds
 let isConnected = false;
+let connectionTimeout;
+const CONNECTION_TIMEOUT = 30000; // 30 seconds timeout
 
 // Initialize WebRTC connection
 function initializeConnection() {
-    isConnected = false; // Reset connection state
+    clearTimeout(connectionTimeout);
+    isConnected = false;
     chrome.runtime.sendMessage({ 
         type: 'connectionStatus', 
-        connected: false
+        connected: false,
+        status: 'Initializing connection...'
     });
 
+    // Clean up any existing connections
+    peerConnections.forEach(connection => connection.close());
+    dataChannels.forEach(channel => channel.close());
+    peerConnections.clear();
+    dataChannels.clear();
+
     if (isHost) {
-        // Host creates a room and waits for peers
         console.log('✅ Created room:', roomId);
         chrome.runtime.sendMessage({ 
             type: 'connectionStatus', 
             connected: true,
             isHost: true,
-            roomId: roomId
+            roomId: roomId,
+            status: 'Waiting for peers to join...'
         });
-        isConnected = true; // Host is always initially connected
+        isConnected = true;
     } else {
-        // Peer connects to host
         console.log('🔄 Connecting to room:', roomId);
         connectToPeer(roomId);
+        
+        // Set connection timeout
+        connectionTimeout = setTimeout(() => {
+            if (!isConnected) {
+                console.log('❌ Connection timeout - attempting reconnect...');
+                chrome.runtime.sendMessage({ 
+                    type: 'connectionStatus', 
+                    connected: false,
+                    status: 'Connection timeout - reconnecting...'
+                });
+                connectToPeer(roomId); // Attempt reconnection
+            }
+        }, CONNECTION_TIMEOUT);
     }
 }
 
 // Create RTCPeerConnection with a peer
 function createPeerConnection(peerId) {
+    console.log('Creating peer connection for:', peerId);
+    
     const peerConnection = new RTCPeerConnection({
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' },
             {
-                urls: 'turn:a.relay.metered.ca:80',
+                urls: [
+                    'turn:a.relay.metered.ca:80',
+                    'turn:a.relay.metered.ca:80?transport=tcp',
+                    'turn:a.relay.metered.ca:443',
+                    'turn:a.relay.metered.ca:443?transport=tcp'
+                ],
                 username: '83ee56d5b5e9c11988b65a19',
-                credential: 'eA+qWdcVQEZGTLZa',
-            },
-            {
-                urls: 'turn:a.relay.metered.ca:443',
-                username: '83ee56d5b5e9c11988b65a19',
-                credential: 'eA+qWdcVQEZGTLZa',
-            },
-            {
-                urls: 'turn:a.relay.metered.ca:443?transport=tcp',
-                username: '83ee56d5b5e9c11988b65a19',
-                credential: 'eA+qWdcVQEZGTLZa',
+                credential: 'eA+qWdcVQEZGTLZa'
             }
         ],
-        iceCandidatePoolSize: 10
+        iceCandidatePoolSize: 10,
+        iceTransportPolicy: 'all',
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require'
     });
 
-    // Log ICE connection state changes
     peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE connection state:', peerConnection.iceConnectionState);
-        if (peerConnection.iceConnectionState === 'failed') {
-            console.log('ICE connection failed, attempting restart...');
+        const state = peerConnection.iceConnectionState;
+        console.log(`📡 ICE Connection State (${peerId}):`, state);
+        
+        chrome.runtime.sendMessage({ 
+            type: 'connectionStatus', 
+            connected: state === 'connected' || state === 'completed',
+            status: `ICE ${state}`
+        });
+
+        if (state === 'failed' || state === 'disconnected') {
+            console.log('❌ ICE connection failed or disconnected - attempting restart...');
             peerConnection.restartIce();
         }
     };
 
-    // Log signaling state changes
-    peerConnection.onsignalingstatechange = () => {
-        console.log('Signaling state:', peerConnection.signalingState);
+    peerConnection.onconnectionstatechange = () => {
+        const state = peerConnection.connectionState;
+        console.log(`🌐 Connection State (${peerId}):`, state);
+        
+        if (state === 'failed') {
+            console.log('❌ Connection failed - attempting reconnection...');
+            // Clean up and retry connection
+            peerConnection.close();
+            peerConnections.delete(peerId);
+            if (!isHost) {
+                setTimeout(() => connectToPeer(roomId), 2000);
+            }
+        }
     };
 
-    // Create data channel for synchronization
-    const dataChannel = peerConnection.createDataChannel('sync', {
-        ordered: true,
-        maxRetransmits: 3
-    });
-    setupDataChannel(dataChannel);
-    dataChannels.set(peerId, dataChannel);
+    peerConnection.onsignalingstatechange = () => {
+        console.log(`📞 Signaling State (${peerId}):`, peerConnection.signalingState);
+    };
+
+    peerConnection.onicegatheringstatechange = () => {
+        console.log(`❄️ ICE Gathering State (${peerId}):`, peerConnection.iceGatheringState);
+    };
 
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
-            console.log('New ICE candidate:', event.candidate.candidate);
-            // Send ICE candidate to peer through extension messaging
+            console.log('📨 New ICE candidate:', event.candidate.candidate);
             chrome.runtime.sendMessage({
                 type: 'relayICECandidate',
                 candidate: event.candidate,
@@ -92,9 +130,17 @@ function createPeerConnection(peerId) {
         }
     };
 
+    // Create data channel for synchronization
+    const dataChannel = peerConnection.createDataChannel('sync', {
+        ordered: true,
+        maxRetransmits: 3
+    });
+    setupDataChannel(dataChannel, peerId);
+    dataChannels.set(peerId, dataChannel);
+
     peerConnection.ondatachannel = (event) => {
-        console.log('Received data channel');
-        setupDataChannel(event.channel);
+        console.log('📱 Received data channel');
+        setupDataChannel(event.channel, peerId);
     };
 
     peerConnections.set(peerId, peerConnection);
@@ -102,13 +148,15 @@ function createPeerConnection(peerId) {
 }
 
 // Setup data channel for sync messages
-function setupDataChannel(channel) {
+function setupDataChannel(channel, peerId) {
     channel.onopen = () => {
-        console.log('Data channel opened');
+        console.log(`✅ Data channel opened for peer: ${peerId}`);
+        clearTimeout(connectionTimeout);
         isConnected = true;
         chrome.runtime.sendMessage({ 
             type: 'connectionStatus', 
-            connected: true 
+            connected: true,
+            status: 'Connected successfully'
         });
         chrome.runtime.sendMessage({
             type: 'peerCount',
