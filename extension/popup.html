@@ -4,7 +4,7 @@
     <title>BluTV Party</title>
     <style>
         body {
-            width: 300px;
+            width: 320px;
             padding: 15px;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
@@ -35,6 +35,21 @@
             border: 1px solid #ccc;
             border-radius: 4px;
             font-size: 14px;
+        }
+        .row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .server-settings {
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            border: 1px solid #e9ecef;
+            margin-bottom: 10px;
+        }
+        .server-input {
+            flex: 1;
         }
         .room-info {
             margin-top: 10px;
@@ -67,19 +82,47 @@
             font-size: 14px;
             margin-top: 5px;
         }
+        .server-url {
+            font-size: 12px;
+            color: #6c757d;
+            word-break: break-all;
+            margin-top: 8px;
+        }
+        .actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div id="create-join">
-            <button id="createRoom">Create Room</button>
+            <div class="server-settings">
+                <h3 style="margin-top: 0;">Server Settings</h3>
+                <label for="serverUrl">Server URL:</label>
+                <div class="row">
+                    <input type="text" id="serverUrl" placeholder="http://localhost:8080" class="server-input">
+                </div>
+                <p style="font-size: 12px; margin-top: 8px;">
+                    One person needs to run the server before others can connect.
+                    See README for instructions.
+                </p>
+            </div>
+            
+            <h3>Create or Join Room</h3>
+            <button id="createRoom">Create New Room</button>
             <div style="margin: 10px 0;">
-                <input type="text" id="roomInput" placeholder="Enter Room ID">
-                <button id="joinRoom">Join Room</button>
+                <div class="row">
+                    <input type="text" id="roomInput" placeholder="Enter Room ID" class="server-input">
+                    <button id="joinRoom">Join</button>
+                </div>
             </div>
         </div>
+        
         <div id="room-controls" style="display: none;">
             <div class="room-info">
+                <h3 style="margin-top: 0;">Room Information</h3>
                 <p>Room ID: <strong><span id="currentRoom"></span></strong></p>
                 <div class="status">
                     Status: <div class="status-dot"></div>
@@ -88,9 +131,17 @@
                 <div class="peers">
                     Connected Peers: <span id="peerCount">0</span>
                 </div>
+                <div class="server-url">
+                    Server: <span id="serverStatus"></span>
+                </div>
+                
+                <div class="actions">
+                    <button id="requestSync">Request Sync</button>
+                    <button id="leaveRoom">Leave Room</button>
+                </div>
             </div>
-            <button id="leaveRoom">Leave Room</button>
         </div>
+        
         <div id="error" class="error" style="display: none;"></div>
     </div>
     <script src="popup.js"></script>

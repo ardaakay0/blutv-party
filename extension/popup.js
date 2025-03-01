@@ -10,10 +10,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusDot = document.querySelector('.status-dot');
     const peerCountSpan = document.getElementById('peerCount');
     const errorDiv = document.getElementById('error');
+    const serverUrlInput = document.getElementById('serverUrl');
 
     let currentTabId = null;
     let currentUrl = null;
     let contentScriptLoaded = false;
+    const DEFAULT_SERVER_URL = 'http://localhost:8080';
 
     // Generate a random room ID
     function generateRoomId() {
@@ -21,11 +23,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Save room state
-    function saveRoomState(roomId, isHost) {
+    function saveRoomState(roomId, isHost, serverUrl) {
         chrome.storage.local.set({
             roomState: {
                 roomId,
                 isHost,
+                serverUrl,
                 tabId: currentTabId,
                 url: currentUrl
             }
@@ -38,12 +41,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Show room controls and hide create/join options
-    function showRoomControls(roomId, skipStatusUpdate = false) {
+    function showRoomControls(roomId, serverUrl, skipStatusUpdate = false) {
         createJoinDiv.style.display = 'none';
         roomControlsDiv.style.display = 'block';
         currentRoomSpan.textContent = roomId;
+        document.getElementById('serverStatus').textContent = serverUrl;
         if (!skipStatusUpdate) {
-            updateStatus('Connecting...');
+            updateStatus('Connecting to server...');
         }
     }
 
@@ -66,6 +70,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Update peer count
     function updatePeerCount(count) {
+        // Skip updates for invalid counts
+        if (count < 0) return;
         peerCountSpan.textContent = count;
     }
 
@@ -185,16 +191,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 const isHost = response.isHost;
                 
                 if (isHost) {
-                    // Host is always initially connected
-                    updateStatus('Waiting for peers...', true);
+                    // Host is waiting for peers
+                    updateStatus('Waiting for peers...', isConnected);
                 } else {
                     updateStatus(
-                        isConnected ? 'Connected' : 'Connecting to host...',
+                        isConnected ? 'Connected' : 'Connecting to server...',
                         isConnected
                     );
                 }
                 
-                if (response.peerCount) {
+                if (response.peerCount !== undefined) {
                     updatePeerCount(response.peerCount);
                 }
             } else {
@@ -206,6 +212,24 @@ document.addEventListener('DOMContentLoaded', () => {
             updateStatus('Disconnected');
             updatePeerCount(0);
         }
+    }
+
+    // Get or validate server URL
+    function getServerUrl() {
+        let url = serverUrlInput.value.trim();
+        
+        if (!url) {
+            url = DEFAULT_SERVER_URL;
+            serverUrlInput.value = url;
+        }
+        
+        // Ensure it has http or https
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            url = 'http://' + url;
+            serverUrlInput.value = url;
+        }
+        
+        return url;
     }
 
     // Create a new room
@@ -221,22 +245,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            const serverUrl = getServerUrl();
+            if (!serverUrl) {
+                showError('Please enter a valid server URL!');
+                return;
+            }
+
             const roomId = generateRoomId();
             const response = await sendMessageToTab({
                 type: 'initParty',
                 roomId: roomId,
-                isHost: true
+                isHost: true,
+                serverUrl: serverUrl
             });
 
             if (response) {
-                showRoomControls(roomId);
-                saveRoomState(roomId, true);
+                showRoomControls(roomId, serverUrl);
+                saveRoomState(roomId, true, serverUrl);
                 await checkConnectionState();
             } else {
                 showError('Failed to initialize party. Please refresh the page and try again.');
             }
         } catch (error) {
-            showError('Failed to create room. Please try again.');
+            showError('Failed to create room: ' + error.message);
         }
     });
 
@@ -259,21 +290,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            const serverUrl = getServerUrl();
+            if (!serverUrl) {
+                showError('Please enter a valid server URL!');
+                return;
+            }
+
             const response = await sendMessageToTab({
                 type: 'initParty',
                 roomId: roomId,
-                isHost: false
+                isHost: false,
+                serverUrl: serverUrl
             });
 
             if (response) {
-                showRoomControls(roomId);
-                saveRoomState(roomId, false);
+                showRoomControls(roomId, serverUrl);
+                saveRoomState(roomId, false, serverUrl);
                 await checkConnectionState();
             } else {
                 showError('Failed to join party. Please refresh the page and try again.');
             }
         } catch (error) {
-            showError('Failed to join room. Please try again.');
+            showError('Failed to join room: ' + error.message);
         }
     });
 
@@ -289,32 +327,47 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Manually request sync from host
+    document.getElementById('requestSync').addEventListener('click', async () => {
+        try {
+            await sendMessageToTab({ type: 'requestSync' });
+            showMessage('Sync requested from host');
+        } catch (error) {
+            showError('Failed to request sync: ' + error.message);
+        }
+    });
+
+    // Show temporary message
+    function showMessage(message, timeout = 3000) {
+        showError(message);
+        setTimeout(() => {
+            hideError();
+        }, timeout);
+    }
+
     // Listen for status updates
     chrome.runtime.onMessage.addListener((message, sender) => {
         if (sender.tab?.id === currentTabId) {
             switch (message.type) {
                 case 'connectionStatus':
-                    if (message.isHost) {
-                        updateStatus(
-                            message.connected ? 'Waiting for peers...' : 'Disconnected',
-                            message.connected
-                        );
-                    } else {
-                        updateStatus(
-                            message.connected ? 'Connected' : 'Connecting to host...',
-                            message.connected
-                        );
-                    }
-                    if (message.error) {
-                        showError(message.error);
+                    updateStatus(
+                        message.status || (message.connected ? 'Connected' : 'Disconnected'),
+                        message.connected
+                    );
+                    if (message.message) {
+                        showError(message.message);
                     } else {
                         hideError();
                     }
                     break;
                 case 'peerCount':
                     updatePeerCount(message.count);
-                    if (message.count > 0) {
-                        updateStatus('Connected', true);
+                    break;
+                case 'hostChanged':
+                    if (message.isHost) {
+                        showMessage('You are now the host!');
+                    } else {
+                        showMessage('Host has changed');
                     }
                     break;
             }
@@ -336,12 +389,27 @@ document.addEventListener('DOMContentLoaded', () => {
             currentUrl && 
             currentUrl.includes('blutv.com')) {
             // We're in a room and on a BluTV page, restore the UI
-            showRoomControls(roomState.roomId, true); // Skip initial status update
+            serverUrlInput.value = roomState.serverUrl || DEFAULT_SERVER_URL;
+            showRoomControls(roomState.roomId, roomState.serverUrl, true); // Skip initial status update
             checkConnectionState();
         } else if (roomState && roomState.tabId === currentTabId) {
             // We have a room state but we're not on a BluTV page
             clearRoomState();
             showCreateJoin();
+        } else {
+            // Not in a room, initialize with stored or default server URL
+            const serverStorage = await chrome.storage.local.get('lastServerUrl');
+            if (serverStorage.lastServerUrl) {
+                serverUrlInput.value = serverStorage.lastServerUrl;
+            } else {
+                serverUrlInput.value = DEFAULT_SERVER_URL;
+            }
         }
+    });
+
+    // Save the server URL whenever it changes
+    serverUrlInput.addEventListener('blur', () => {
+        const url = getServerUrl();
+        chrome.storage.local.set({ lastServerUrl: url });
     });
 }); 

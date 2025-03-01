@@ -25,45 +25,30 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       break;
 
     case 'connectionStatus':
-      if (request.connected && request.isHost) {
-        // Store room information
-        rooms.set(request.roomId, {
-          hostTabId: tabId,
-          peers: new Set()
-        });
-      }
+      // Update the extension badge
       updateBadge(tabId, request.connected);
-      break;
-
-    case 'relayOffer':
-      // Forward offer from peer to host
-      const room = rooms.get(request.roomId);
-      if (room) {
-        chrome.tabs.sendMessage(room.hostTabId, {
-          type: 'joinRequest',
-          peerId: tabId,
-          offer: request.offer
+      
+      // Store room information for potentially reconnecting
+      if (request.connected && request.roomId) {
+        rooms.set(request.roomId, {
+          tabId: tabId,
+          isHost: request.isHost,
+          serverUrl: request.serverUrl
         });
-        room.peers.add(tabId);
+      } else if (!request.connected && tabId) {
+        // Find and remove any rooms associated with this tab
+        for (const [roomId, room] of rooms.entries()) {
+          if (room.tabId === tabId) {
+            rooms.delete(roomId);
+            break;
+          }
+        }
       }
       break;
 
-    case 'relayAnswer':
-      // Forward answer from host to peer
-      chrome.tabs.sendMessage(request.peerId, {
-        type: 'receiveAnswer',
-        answer: request.answer
-      });
-      break;
-
-    case 'relayICECandidate':
-      // Forward ICE candidate to the appropriate peer
-      const targetTabId = request.peerId;
-      chrome.tabs.sendMessage(targetTabId, {
-        type: 'receiveICE',
-        candidate: request.candidate,
-        peerId: tabId
-      });
+    case 'peerCount':
+      // If count is -1, this is just a notification that peers have changed
+      // No action needed, the content script will handle the actual count
       break;
   }
   
@@ -134,4 +119,11 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 // Listen for tab removal
 chrome.tabs.onRemoved.addListener((tabId) => {
     contentScriptTabs.delete(tabId);
+    
+    // Remove any rooms associated with this tab
+    for (const [roomId, room] of rooms.entries()) {
+        if (room.tabId === tabId) {
+            rooms.delete(roomId);
+        }
+    }
 }); 

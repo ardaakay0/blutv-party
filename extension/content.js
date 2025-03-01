@@ -1,395 +1,397 @@
-let peerConnections = new Map(); // Store peer connections
-let dataChannels = new Map(); // Store data channels
+// Global variables
 let videoElement;
 let isHost = false;
 let roomId = null;
 let lastTimeUpdate = 0;
 const SYNC_THRESHOLD = 2; // seconds
 let isConnected = false;
-let connectionTimeout;
-const CONNECTION_TIMEOUT = 30000; // 30 seconds timeout
+let socket = null;
+let serverUrl = null;
+let retryCount = 0;
+const MAX_RETRIES = 3;
+let syncInterval = null;
 
-// Initialize WebRTC connection
+// Socket.IO connection status
+const ConnectionState = {
+  DISCONNECTED: 'disconnected',
+  CONNECTING: 'connecting',
+  CONNECTED: 'connected',
+  ERROR: 'error'
+};
+let connectionState = ConnectionState.DISCONNECTED;
+
+// Initialize Socket.IO connection
 function initializeConnection() {
-    clearTimeout(connectionTimeout);
-    isConnected = false;
-    chrome.runtime.sendMessage({ 
-        type: 'connectionStatus', 
-        connected: false,
-        status: 'Initializing connection...'
-    });
+  if (socket) {
+    socket.disconnect();
+  }
 
-    // Clean up any existing connections
-    peerConnections.forEach(connection => connection.close());
-    dataChannels.forEach(channel => channel.close());
-    peerConnections.clear();
-    dataChannels.clear();
+  if (!serverUrl) {
+    console.error('Server URL not provided!');
+    updateConnectionStatus(ConnectionState.ERROR, 'Server URL not provided');
+    return;
+  }
 
-    if (isHost) {
-        console.log('✅ Created room:', roomId);
-        chrome.runtime.sendMessage({ 
-            type: 'connectionStatus', 
-            connected: true,
-            isHost: true,
-            roomId: roomId,
-            status: 'Waiting for peers to join...'
-        });
-        isConnected = true;
-    } else {
-        console.log('🔄 Connecting to room:', roomId);
-        connectToPeer(roomId);
-        
-        // Set connection timeout
-        connectionTimeout = setTimeout(() => {
-            if (!isConnected) {
-                console.log('❌ Connection timeout - attempting reconnect...');
-                chrome.runtime.sendMessage({ 
-                    type: 'connectionStatus', 
-                    connected: false,
-                    status: 'Connection timeout - reconnecting...'
-                });
-                connectToPeer(roomId); // Attempt reconnection
-            }
-        }, CONNECTION_TIMEOUT);
-    }
-}
+  console.log(`🔄 Connecting to server at ${serverUrl}`);
+  updateConnectionStatus(ConnectionState.CONNECTING);
 
-// Create RTCPeerConnection with a peer
-function createPeerConnection(peerId) {
-    console.log('Creating peer connection for:', peerId);
+  // Load Socket.IO client from CDN if it hasn't been loaded
+  if (typeof io === 'undefined') {
+    console.log('Loading Socket.IO client...');
+    const script = document.createElement('script');
+    script.src = 'https://cdn.socket.io/4.7.4/socket.io.min.js';
+    script.integrity = 'sha384-Gr6Lu2Ajx28mzwyVR8CFkULdCU7kMlZ9UthllibdOSo6qAiN+yXNHqtgdTvFXMT4';
+    script.crossOrigin = 'anonymous';
     
-    const peerConnection = new RTCPeerConnection({
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            {
-                urls: [
-                    'turn:a.relay.metered.ca:80',
-                    'turn:a.relay.metered.ca:80?transport=tcp',
-                    'turn:a.relay.metered.ca:443',
-                    'turn:a.relay.metered.ca:443?transport=tcp'
-                ],
-                username: '83ee56d5b5e9c11988b65a19',
-                credential: 'eA+qWdcVQEZGTLZa'
-            }
-        ],
-        iceCandidatePoolSize: 10,
-        iceTransportPolicy: 'all',
-        bundlePolicy: 'max-bundle',
-        rtcpMuxPolicy: 'require'
-    });
-
-    peerConnection.oniceconnectionstatechange = () => {
-        const state = peerConnection.iceConnectionState;
-        console.log(`📡 ICE Connection State (${peerId}):`, state);
-        
-        chrome.runtime.sendMessage({ 
-            type: 'connectionStatus', 
-            connected: state === 'connected' || state === 'completed',
-            status: `ICE ${state}`
-        });
-
-        if (state === 'failed' || state === 'disconnected') {
-            console.log('❌ ICE connection failed or disconnected - attempting restart...');
-            peerConnection.restartIce();
-        }
+    script.onload = () => {
+      console.log('✅ Socket.IO client loaded');
+      connectSocket();
     };
-
-    peerConnection.onconnectionstatechange = () => {
-        const state = peerConnection.connectionState;
-        console.log(`🌐 Connection State (${peerId}):`, state);
-        
-        if (state === 'failed') {
-            console.log('❌ Connection failed - attempting reconnection...');
-            // Clean up and retry connection
-            peerConnection.close();
-            peerConnections.delete(peerId);
-            if (!isHost) {
-                setTimeout(() => connectToPeer(roomId), 2000);
-            }
-        }
+    
+    script.onerror = () => {
+      console.error('❌ Failed to load Socket.IO client');
+      updateConnectionStatus(ConnectionState.ERROR, 'Failed to load Socket.IO client');
     };
-
-    peerConnection.onsignalingstatechange = () => {
-        console.log(`📞 Signaling State (${peerId}):`, peerConnection.signalingState);
-    };
-
-    peerConnection.onicegatheringstatechange = () => {
-        console.log(`❄️ ICE Gathering State (${peerId}):`, peerConnection.iceGatheringState);
-    };
-
-    peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-            console.log('📨 New ICE candidate:', event.candidate.candidate);
-            chrome.runtime.sendMessage({
-                type: 'relayICECandidate',
-                candidate: event.candidate,
-                peerId: peerId
-            });
-        }
-    };
-
-    // Create data channel for synchronization
-    const dataChannel = peerConnection.createDataChannel('sync', {
-        ordered: true,
-        maxRetransmits: 3
-    });
-    setupDataChannel(dataChannel, peerId);
-    dataChannels.set(peerId, dataChannel);
-
-    peerConnection.ondatachannel = (event) => {
-        console.log('📱 Received data channel');
-        setupDataChannel(event.channel, peerId);
-    };
-
-    peerConnections.set(peerId, peerConnection);
-    return peerConnection;
+    
+    document.head.appendChild(script);
+  } else {
+    connectSocket();
+  }
 }
 
-// Setup data channel for sync messages
-function setupDataChannel(channel, peerId) {
-    channel.onopen = () => {
-        console.log(`✅ Data channel opened for peer: ${peerId}`);
-        clearTimeout(connectionTimeout);
-        isConnected = true;
-        chrome.runtime.sendMessage({ 
-            type: 'connectionStatus', 
-            connected: true,
-            status: 'Connected successfully'
-        });
-        chrome.runtime.sendMessage({
-            type: 'peerCount',
-            count: dataChannels.size
-        });
-        if (isHost) {
-            sendVideoState();
-        }
-    };
+// Connect to Socket.IO server
+function connectSocket() {
+  try {
+    socket = io(serverUrl, {
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      timeout: 10000
+    });
 
-    channel.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        handleSyncMessage(data);
-    };
+    setupSocketListeners();
+  } catch (error) {
+    console.error('❌ Error connecting to server:', error);
+    updateConnectionStatus(ConnectionState.ERROR, error.message);
+  }
+}
 
-    channel.onerror = (error) => {
-        console.error('Data channel error:', error);
-        chrome.runtime.sendMessage({ 
-            type: 'connectionStatus', 
-            connected: false,
-            error: 'Connection error occurred'
-        });
-    };
+// Setup Socket.IO event listeners
+function setupSocketListeners() {
+  socket.on('connect', () => {
+    console.log(`✅ Connected to server with ID: ${socket.id}`);
+    retryCount = 0;
 
-    channel.onclose = () => {
-        console.log('Data channel closed');
-        const wasConnected = isConnected;
-        isConnected = dataChannels.size > 0;
-        
-        // Only send status update if connection state actually changed
-        if (wasConnected !== isConnected) {
-            chrome.runtime.sendMessage({ 
-                type: 'connectionStatus', 
-                connected: isConnected 
-            });
-        }
-        
-        chrome.runtime.sendMessage({
-            type: 'peerCount',
-            count: dataChannels.size
-        });
-    };
+    // Join the room
+    socket.emit('join', {
+      roomId: roomId,
+      isHost: isHost
+    });
+  });
+
+  socket.on('connect_error', (error) => {
+    console.error('❌ Connection error:', error);
+    
+    if (++retryCount <= MAX_RETRIES) {
+      console.log(`Retrying connection (${retryCount}/${MAX_RETRIES})...`);
+      updateConnectionStatus(ConnectionState.CONNECTING, `Retrying (${retryCount}/${MAX_RETRIES})...`);
+    } else {
+      console.error('❌ Max retries reached, giving up');
+      updateConnectionStatus(ConnectionState.ERROR, 'Failed to connect to server after multiple attempts');
+    }
+  });
+
+  socket.on('disconnect', (reason) => {
+    console.log('🔌 Disconnected from server:', reason);
+    clearInterval(syncInterval);
+    updateConnectionStatus(ConnectionState.DISCONNECTED, reason);
+  });
+
+  socket.on('error', (error) => {
+    console.error('❌ Socket error:', error);
+    updateConnectionStatus(ConnectionState.ERROR, error.message);
+  });
+
+  socket.on('roomInfo', (data) => {
+    console.log('📋 Room info received:', data);
+    isHost = data.isHost;
+    isConnected = true;
+    updateConnectionStatus(ConnectionState.CONNECTED);
+
+    // Update peer count
+    chrome.runtime.sendMessage({
+      type: 'peerCount',
+      count: data.participants.length - 1 // Subtract self
+    });
+
+    // If we're the host, start sending regular sync updates
+    if (isHost && videoElement) {
+      startSyncInterval();
+    }
+  });
+
+  socket.on('userJoined', (data) => {
+    console.log('👋 User joined:', data);
+    
+    // Update peer count - request current count from server
+    chrome.runtime.sendMessage({
+      type: 'peerCount',
+      count: -1 // Signal to request updated count
+    });
+
+    // If we're the host, send the current video state to the new user
+    if (isHost && videoElement) {
+      sendVideoState();
+    }
+  });
+
+  socket.on('userLeft', (data) => {
+    console.log('👋 User left:', data);
+    
+    // Update peer count - request current count from server
+    chrome.runtime.sendMessage({
+      type: 'peerCount',
+      count: -1
+    });
+  });
+
+  socket.on('sync', (data) => {
+    console.log('🔄 Sync received:', data);
+    handleSyncMessage(data);
+  });
+
+  socket.on('syncRequest', () => {
+    console.log('🔄 Sync requested');
+    if (isHost && videoElement) {
+      sendVideoState();
+    }
+  });
+
+  socket.on('hostChanged', (data) => {
+    console.log('👑 Host changed:', data);
+    
+    // Check if we are the new host
+    if (data.newHostId === socket.id) {
+      console.log('👑 I am now the host!');
+      isHost = true;
+      
+      // Start sending sync updates
+      if (videoElement) {
+        startSyncInterval();
+      }
+    }
+
+    chrome.runtime.sendMessage({
+      type: 'hostChanged',
+      isHost: data.newHostId === socket.id
+    });
+  });
+}
+
+// Start interval to send video state (for host only)
+function startSyncInterval() {
+  // Clear existing interval if any
+  if (syncInterval) {
+    clearInterval(syncInterval);
+  }
+
+  // Send initial state
+  sendVideoState();
+
+  // Set up interval to send state every 5 seconds
+  syncInterval = setInterval(() => {
+    if (isHost && isConnected && videoElement) {
+      sendVideoState();
+    }
+  }, 5000);
+}
+
+// Update connection status and notify extension
+function updateConnectionStatus(state, message = '') {
+  connectionState = state;
+  
+  // Determine connected status
+  const connected = state === ConnectionState.CONNECTED;
+  
+  // Send message to extension
+  chrome.runtime.sendMessage({ 
+    type: 'connectionStatus', 
+    connected: connected,
+    status: state,
+    isHost: isHost,
+    roomId: roomId,
+    message: message
+  });
 }
 
 // Handle incoming sync messages
 function handleSyncMessage(data) {
-    if (!videoElement) return;
-    
-    console.log('Received sync:', data);
-    
-    if (Math.abs(videoElement.currentTime - data.currentTime) > SYNC_THRESHOLD) {
-        videoElement.currentTime = data.currentTime;
-    }
-    if (data.isPlaying) {
-        videoElement.play().catch(error => {
-            console.error('Failed to play:', error);
-        });
-    } else {
-        videoElement.pause();
-    }
-}
+  if (!videoElement) return;
+  
+  // Ignore our own messages
+  if (socket && data.userId === socket.id) return;
+  
+  // Only accept sync messages from host if we're not the host,
+  // unless forced by another peer (e.g., for seeking)
+  if (!isHost && !data.isHost && !data.force) return;
 
-// Connect to a peer using their room ID
-async function connectToPeer(hostRoomId) {
-    const peerConnection = createPeerConnection(hostRoomId);
-    
-    try {
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-        
-        // Send offer to host through extension messaging
-        chrome.runtime.sendMessage({
-            type: 'relayOffer',
-            offer: offer,
-            roomId: hostRoomId
-        });
-    } catch (error) {
-        console.error('Error creating offer:', error);
-    }
-}
-
-// Send video state to all connected peers
-function sendVideoState() {
-    if (!videoElement) return;
-
-    const now = Date.now();
-    if (now - lastTimeUpdate < 1000) return; // Throttle updates
-    lastTimeUpdate = now;
-
-    const state = {
-        currentTime: videoElement.currentTime,
-        isPlaying: !videoElement.paused
-    };
-    
-    console.log('Sending sync:', state);
-    
-    // Send to all connected peers
-    dataChannels.forEach(channel => {
-        if (channel.readyState === 'open') {
-            channel.send(JSON.stringify(state));
-        }
+  if (Math.abs(videoElement.currentTime - data.currentTime) > SYNC_THRESHOLD) {
+    console.log(`Syncing video time: ${videoElement.currentTime} -> ${data.currentTime}`);
+    videoElement.currentTime = data.currentTime;
+  }
+  
+  if (data.isPlaying && videoElement.paused) {
+    console.log('Playing video');
+    videoElement.play().catch(error => {
+      console.error('Failed to play:', error);
     });
+  } else if (!data.isPlaying && !videoElement.paused) {
+    console.log('Pausing video');
+    videoElement.pause();
+  }
+}
+
+// Send video state to server
+function sendVideoState() {
+  if (!videoElement || !socket || !isConnected) return;
+
+  const now = Date.now();
+  if (now - lastTimeUpdate < 1000) return; // Throttle updates
+  lastTimeUpdate = now;
+
+  const state = {
+    currentTime: videoElement.currentTime,
+    isPlaying: !videoElement.paused
+  };
+  
+  console.log('📤 Sending sync:', state);
+  
+  socket.emit('sync', state);
 }
 
 // Initialize video element observer
 function initializeVideoObserver() {
-    const observer = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-            const videoElements = document.querySelectorAll('video');
-            if (videoElements.length > 0) {
-                videoElement = videoElements[0];
-                setupVideoListeners();
-                observer.disconnect();
-                break;
-            }
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      const videoElements = document.querySelectorAll('video');
+      if (videoElements.length > 0) {
+        videoElement = videoElements[0];
+        setupVideoListeners();
+        
+        // If we're already connected and we're the host, start sending sync updates
+        if (isConnected && isHost) {
+          startSyncInterval();
         }
-    });
+        
+        observer.disconnect();
+        break;
+      }
+    }
+  });
 
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
 }
 
 // Setup video element event listeners
 function setupVideoListeners() {
-    if (!videoElement) return;
+  if (!videoElement) return;
 
-    videoElement.addEventListener('play', sendVideoState);
-    videoElement.addEventListener('pause', sendVideoState);
-    videoElement.addEventListener('seeking', sendVideoState);
-    videoElement.addEventListener('timeupdate', () => {
-        if (isHost) {
-            sendVideoState();
-        }
-    });
+  videoElement.addEventListener('play', () => {
+    if (isHost) {
+      sendVideoState();
+    }
+  });
+  
+  videoElement.addEventListener('pause', () => {
+    if (isHost) {
+      sendVideoState();
+    }
+  });
+  
+  videoElement.addEventListener('seeking', () => {
+    if (isHost) {
+      sendVideoState();
+    }
+  });
+
+  // Periodic update during playback
+  videoElement.addEventListener('timeupdate', () => {
+    // Only send updates every few seconds to avoid flooding
+    const now = Date.now();
+    if (isHost && now - lastTimeUpdate > 5000) {
+      sendVideoState();
+    }
+  });
 }
 
 // Handle extension messages
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    const handleMessage = async () => {
-        switch (request.type) {
-            case 'ping':
-                return { success: true };
-                
-            case 'getPartyState':
-                return {
-                    success: true,
-                    connected: isConnected,
-                    peerCount: dataChannels.size,
-                    isHost: isHost,
-                    roomId: roomId
-                };
-                
-            case 'initParty':
-                // Clean up any existing connections first
-                peerConnections.forEach(connection => connection.close());
-                dataChannels.forEach(channel => channel.close());
-                peerConnections.clear();
-                dataChannels.clear();
-                
-                roomId = request.roomId;
-                isHost = request.isHost;
-                initializeConnection();
-                return { success: true };
-                
-            case 'joinRequest':
-                if (isHost) {
-                    const peerConnection = createPeerConnection(request.peerId);
-                    try {
-                        await peerConnection.setRemoteDescription(request.offer);
-                        const answer = await peerConnection.createAnswer();
-                        await peerConnection.setLocalDescription(answer);
-                        
-                        // Send answer back through extension messaging
-                        chrome.runtime.sendMessage({
-                            type: 'relayAnswer',
-                            answer: answer,
-                            peerId: request.peerId
-                        });
-                        return { success: true };
-                    } catch (error) {
-                        console.error('Error creating answer:', error);
-                        return { success: false, error: error.message };
-                    }
-                }
-                return { success: false };
-                
-            case 'receiveAnswer':
-                if (!isHost) {
-                    const peerConnection = peerConnections.get(roomId);
-                    if (peerConnection) {
-                        await peerConnection.setRemoteDescription(request.answer);
-                        return { success: true };
-                    }
-                }
-                return { success: false };
-                
-            case 'receiveICE':
-                const peerConnection = isHost ? 
-                    peerConnections.get(request.peerId) : 
-                    peerConnections.get(roomId);
-                if (peerConnection) {
-                    await peerConnection.addIceCandidate(request.candidate);
-                    return { success: true };
-                }
-                return { success: false };
-                
-            case 'leaveParty':
-                // Close all peer connections
-                peerConnections.forEach(connection => connection.close());
-                dataChannels.forEach(channel => channel.close());
-                peerConnections.clear();
-                dataChannels.clear();
-                roomId = null;
-                isHost = false;
-                isConnected = false;
-                return { success: true };
-                
-            default:
-                return { success: false, error: 'Unknown message type' };
+  const handleMessage = async () => {
+    switch (request.type) {
+      case 'ping':
+        return { success: true };
+        
+      case 'getPartyState':
+        return {
+          success: true,
+          connected: isConnected,
+          peerCount: socket ? socket.connected : 0,
+          isHost: isHost,
+          roomId: roomId,
+          serverUrl: serverUrl
+        };
+        
+      case 'initParty':
+        // Save party info
+        roomId = request.roomId;
+        isHost = request.isHost;
+        serverUrl = request.serverUrl;
+        
+        // Initialize connection
+        initializeConnection();
+        return { success: true };
+        
+      case 'requestSync':
+        if (socket && socket.connected) {
+          socket.emit('requestSync');
+          return { success: true };
         }
-    };
+        return { success: false, error: 'Not connected to server' };
+        
+      case 'leaveParty':
+        // Disconnect from server
+        if (socket) {
+          socket.disconnect();
+          socket = null;
+        }
+        
+        // Reset state
+        clearInterval(syncInterval);
+        syncInterval = null;
+        roomId = null;
+        isHost = false;
+        isConnected = false;
+        serverUrl = null;
+        connectionState = ConnectionState.DISCONNECTED;
+        return { success: true };
+        
+      default:
+        return { success: false, error: 'Unknown message type' };
+    }
+  };
 
-    // Handle the async response properly
-    handleMessage().then(response => {
-        sendResponse(response);
-    }).catch(error => {
-        console.error('Error handling message:', error);
-        sendResponse({ success: false, error: error.message });
-    });
+  // Handle the async response properly
+  handleMessage().then(response => {
+    sendResponse(response);
+  }).catch(error => {
+    console.error('Error handling message:', error);
+    sendResponse({ success: false, error: error.message });
+  });
 
-    return true; // Will respond asynchronously
+  return true; // Will respond asynchronously
 });
 
 // Start observing for video element
