@@ -4,14 +4,24 @@ let isHost = false;
 let roomId = null;
 let lastTimeUpdate = 0;
 const SYNC_THRESHOLD = 2; // seconds
+let isConnected = false;
+let messageQueue = [];
 
 // Initialize WebSocket connection
 function initializeWebSocket() {
-    socket = new WebSocket('wss://blutv-party-production.up.railway.app:8080');
+    socket = new WebSocket('ws://blutv-party-production.up.railway.app:8080');
     
     socket.onopen = () => {
         console.log('✅ Connected to server');
+        isConnected = true;
         chrome.runtime.sendMessage({ type: 'connectionStatus', connected: true });
+        
+        // Send any queued messages
+        while (messageQueue.length > 0) {
+            const message = messageQueue.shift();
+            socket.send(message);
+        }
+
         if (roomId) {
             socket.send(JSON.stringify({
                 type: 'join',
@@ -31,7 +41,9 @@ function initializeWebSocket() {
     };
 
     socket.onclose = () => {
-        console.log('Disconnected from server');
+        console.log('❌ Disconnected from server');
+        isConnected = false;
+        chrome.runtime.sendMessage({ type: 'connectionStatus', connected: false });
         // Attempt to reconnect after 5 seconds
         setTimeout(initializeWebSocket, 5000);
     };
@@ -62,18 +74,25 @@ function handleSocketMessage(data) {
 
 // Send current video state to server
 function sendVideoState() {
-    if (!socket || !videoElement) return;
+    if (!videoElement) return;
 
     const now = Date.now();
-    if (now - lastTimeUpdate < 1000) return; // Throttle updates to once per second
+    if (now - lastTimeUpdate < 1000) return; // Throttle updates
     lastTimeUpdate = now;
 
-    socket.send(JSON.stringify({
+    const message = JSON.stringify({
         type: 'sync',
         currentTime: videoElement.currentTime,
         isPlaying: !videoElement.paused,
         roomId: roomId
-    }));
+    });
+
+    if (isConnected && socket.readyState === WebSocket.OPEN) {
+        socket.send(message);
+    } else {
+        messageQueue.push(message);
+        console.log('Queued message - WebSocket not ready');
+    }
 }
 
 // Initialize video element observer
