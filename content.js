@@ -18,7 +18,7 @@ function initializeSync() {
 
     script.onload = () => {
         // Connect to your server
-        socket = io('YOUR_SERVER_URL');
+        socket = io('https://blutv-party-production.up.railway.app:8080');
 
         // Listen for video events
         videoElement.addEventListener('play', handleVideoEvent);
