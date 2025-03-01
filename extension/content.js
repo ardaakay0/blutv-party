@@ -117,6 +117,9 @@ function setupSocketListeners() {
     if (isHost && videoElement) {
       startSyncInterval();
     }
+    
+    // Initialize chat UI
+    initializeChat();
   });
 
   socket.on('userJoined', (data) => {
@@ -173,6 +176,26 @@ function setupSocketListeners() {
     chrome.runtime.sendMessage({
       type: 'hostChanged',
       isHost: data.newHostId === socket.id
+    });
+  });
+
+  // Listen for chat messages
+  socket.on('chatMessage', (data) => {
+    console.log('💬 Chat message received:', data);
+    
+    // Display the message in the chat UI
+    displayChatMessage(data);
+    
+    // Determine if this is the user's own message
+    const isOwnMessage = data.userId === socket.id;
+    
+    // Notify the background script about new message
+    chrome.runtime.sendMessage({
+      type: 'newChatMessage',
+      data: {
+        ...data,
+        isOwnMessage
+      }
     });
   });
 }
@@ -341,6 +364,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         
         // Initialize connection
         initializeConnection();
+        
+        // Initialize chat UI after connecting
+        setTimeout(() => {
+          initializeChat();
+        }, 1000); // Slight delay to ensure socket connection is established
+        
         return { success: true };
         
       case 'requestSync':
@@ -357,6 +386,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           socket = null;
         }
         
+        // Remove chat UI
+        const chatContainer = document.getElementById('blutv-party-chat');
+        if (chatContainer) {
+          chatContainer.remove();
+        }
+        
         // Reset state
         clearInterval(syncInterval);
         syncInterval = null;
@@ -365,6 +400,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         isConnected = false;
         serverUrl = null;
         connectionState = ConnectionState.DISCONNECTED;
+        return { success: true };
+        
+      case 'toggleChat':
+        toggleChat();
         return { success: true };
         
       default:
@@ -384,4 +423,285 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // Start observing for video element
-initializeVideoObserver(); 
+initializeVideoObserver();
+
+// Create chat UI
+function createChatUI() {
+  // Remove existing chat UI if any
+  const existingChat = document.getElementById('blutv-party-chat');
+  if (existingChat) {
+    existingChat.remove();
+  }
+
+  // Try to get saved username from localStorage
+  let savedUsername = localStorage.getItem('blutvPartyUsername') || '';
+
+  // Create chat container
+  const chatContainer = document.createElement('div');
+  chatContainer.id = 'blutv-party-chat';
+  chatContainer.style.cssText = `
+    position: absolute;
+    top: 70px;
+    right: 20px;
+    width: 300px;
+    height: 400px;
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    border-radius: 8px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+    font-family: Arial, sans-serif;
+  `;
+
+  // Create header
+  const header = document.createElement('div');
+  header.style.cssText = `
+    padding: 10px;
+    background-color: #5865F2;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: move;
+  `;
+  header.innerHTML = '<span>BluTV Party Chat</span>';
+  
+  // Add minimize button
+  const minimizeBtn = document.createElement('button');
+  minimizeBtn.innerHTML = '−';
+  minimizeBtn.style.cssText = `
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-size: 18px;
+  `;
+  minimizeBtn.onclick = (e) => {
+    e.stopPropagation(); // Prevent dragging when clicking the button
+    toggleChat();
+  };
+  header.appendChild(minimizeBtn);
+  
+  // Create username input area
+  const usernameArea = document.createElement('div');
+  usernameArea.style.cssText = `
+    padding: 10px;
+    border-bottom: 1px solid #444;
+    display: flex;
+    align-items: center;
+  `;
+  
+  const usernameLabel = document.createElement('label');
+  usernameLabel.innerHTML = 'Username:';
+  usernameLabel.style.cssText = `
+    margin-right: 8px;
+    font-size: 14px;
+  `;
+  
+  const usernameInput = document.createElement('input');
+  usernameInput.type = 'text';
+  usernameInput.value = savedUsername;
+  usernameInput.placeholder = 'Enter your username';
+  usernameInput.style.cssText = `
+    flex: 1;
+    padding: 6px;
+    border-radius: 4px;
+    border: none;
+    background-color: #444;
+    color: white;
+    font-size: 14px;
+  `;
+  
+  usernameInput.onchange = (e) => {
+    const username = e.target.value.trim();
+    if (username) {
+      localStorage.setItem('blutvPartyUsername', username);
+    }
+  };
+  
+  usernameArea.appendChild(usernameLabel);
+  usernameArea.appendChild(usernameInput);
+  
+  // Create messages container
+  const messagesContainer = document.createElement('div');
+  messagesContainer.id = 'blutv-party-messages';
+  messagesContainer.style.cssText = `
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  `;
+
+  // Create input area
+  const inputArea = document.createElement('div');
+  inputArea.style.cssText = `
+    padding: 10px;
+    border-top: 1px solid #444;
+    display: flex;
+  `;
+
+  const chatInput = document.createElement('input');
+  chatInput.id = 'blutv-party-chat-input';
+  chatInput.type = 'text';
+  chatInput.placeholder = 'Type a message...';
+  chatInput.style.cssText = `
+    flex: 1;
+    padding: 8px;
+    border-radius: 4px;
+    border: none;
+    background-color: #444;
+    color: white;
+    resize: none;
+  `;
+  
+  // Prevent space key from triggering video play/pause
+  chatInput.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+  });
+  
+  const sendButton = document.createElement('button');
+  sendButton.innerHTML = 'Send';
+  sendButton.style.cssText = `
+    margin-left: 8px;
+    padding: 8px 12px;
+    background-color: #5865F2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  `;
+
+  // Add event listener for sending messages
+  const sendMessage = () => {
+    const message = chatInput.value.trim();
+    if (message && socket && isConnected) {
+      // Get username from input or generate default
+      const username = usernameInput.value.trim() || 
+                      'User ' + (socket.id ? socket.id.substring(0, 5) : Math.floor(Math.random() * 10000));
+      
+      socket.emit('chatMessage', {
+        message: message,
+        username: username
+      });
+      chatInput.value = '';
+    }
+  };
+
+  sendButton.onclick = sendMessage;
+  chatInput.onkeypress = (e) => {
+    if (e.key === 'Enter') {
+      sendMessage();
+    }
+  };
+
+  inputArea.appendChild(chatInput);
+  inputArea.appendChild(sendButton);
+
+  // Assemble the chat UI
+  chatContainer.appendChild(header);
+  chatContainer.appendChild(usernameArea);
+  chatContainer.appendChild(messagesContainer);
+  chatContainer.appendChild(inputArea);
+  document.body.appendChild(chatContainer);
+
+  // Make chat draggable
+  makeDraggable(chatContainer, header);
+
+  return chatContainer;
+}
+
+// Function to toggle chat visibility
+function toggleChat() {
+  const chatContainer = document.getElementById('blutv-party-chat');
+  if (chatContainer) {
+    if (chatContainer.style.display === 'none') {
+      chatContainer.style.display = 'flex';
+      // Focus the chat input when shown
+      setTimeout(() => {
+        const chatInput = document.getElementById('blutv-party-chat-input');
+        if (chatInput) chatInput.focus();
+      }, 100);
+    } else {
+      chatContainer.style.display = 'none';
+    }
+  }
+}
+
+// Function to display chat messages
+function displayChatMessage(data) {
+  const messagesContainer = document.getElementById('blutv-party-messages');
+  if (!messagesContainer) return;
+
+  const isOwnMessage = data.userId === socket.id;
+  
+  const messageElement = document.createElement('div');
+  messageElement.style.cssText = `
+    background-color: ${isOwnMessage ? '#5865F2' : '#424549'};
+    padding: 8px 12px;
+    border-radius: 8px;
+    max-width: 85%;
+    align-self: ${isOwnMessage ? 'flex-end' : 'flex-start'};
+    word-break: break-word;
+  `;
+
+  const timestamp = new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  
+  messageElement.innerHTML = `
+    <div style="font-weight: bold; margin-bottom: 4px;">
+      ${data.username}${isOwnMessage ? ' <span style="opacity: 0.7; font-style: italic;">(You)</span>' : ''} 
+      <span style="font-weight: normal; opacity: 0.7; font-size: 12px;">${timestamp}</span>
+    </div>
+    <div>${data.message}</div>
+  `;
+
+  messagesContainer.appendChild(messageElement);
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+// Make an element draggable
+function makeDraggable(element, handle) {
+  let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+  
+  handle.onmousedown = dragMouseDown;
+
+  function dragMouseDown(e) {
+    e.preventDefault();
+    // Get the mouse cursor position at startup
+    pos3 = e.clientX;
+    pos4 = e.clientY;
+    document.onmouseup = closeDragElement;
+    // Call a function whenever the cursor moves
+    document.onmousemove = elementDrag;
+  }
+
+  function elementDrag(e) {
+    e.preventDefault();
+    // Calculate the new cursor position
+    pos1 = pos3 - e.clientX;
+    pos2 = pos4 - e.clientY;
+    pos3 = e.clientX;
+    pos4 = e.clientY;
+    // Set the element's new position
+    element.style.top = (element.offsetTop - pos2) + "px";
+    element.style.left = (element.offsetLeft - pos1) + "px";
+    // Reset right positioning to avoid conflicts
+    element.style.right = "auto";
+  }
+
+  function closeDragElement() {
+    // Stop moving when mouse button is released
+    document.onmouseup = null;
+    document.onmousemove = null;
+  }
+}
+
+// Initialize chat when joining a room
+function initializeChat() {
+  if (isConnected && roomId) {
+    createChatUI();
+  }
+} 

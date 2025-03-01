@@ -342,13 +342,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Leave the current room
     leaveRoomBtn.addEventListener('click', async () => {
-        if (currentTabId) {
-            try {
-                await sendMessageToTab({ type: 'leaveParty' });
-            } catch (error) {
-                console.error('Error leaving party:', error);
-            }
+        try {
+            await sendMessageToTab({ type: 'leaveParty' });
             showCreateJoin();
+        } catch (error) {
+            console.error('Error leaving room:', error);
+            showError('Failed to leave room. Please refresh and try again.');
+        }
+    });
+
+    // Toggle chat button click
+    document.getElementById('toggleChat').addEventListener('click', async () => {
+        try {
+            await sendMessageToTab({ type: 'toggleChat' });
+        } catch (error) {
+            console.error('Error toggling chat:', error);
+            showError('Failed to toggle chat. Please refresh and try again.');
         }
     });
 

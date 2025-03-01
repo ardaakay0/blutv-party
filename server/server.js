@@ -247,6 +247,47 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Handle chat messages
+  socket.on('chatMessage', (data) => {
+    try {
+      const roomId = socket.data.roomId;
+      if (!roomId) {
+        socket.emit('error', { message: 'Not in a room' });
+        return;
+      }
+
+      const room = rooms.get(roomId);
+      if (!room) {
+        socket.emit('error', { message: 'Room not found' });
+        return;
+      }
+
+      // Sanitize and validate username
+      let username = data.username || '';
+      if (!username.trim()) {
+        username = `User ${socket.id.substring(0, 5)}`;
+      } else if (username.length > 20) {
+        username = username.substring(0, 20); // Limit username length
+      }
+
+      log(`Chat message in room ${roomId} from ${socket.id} (${username}): ${data.message}`);
+      
+      // Store username with socket for future use
+      socket.data.username = username;
+      
+      // Broadcast the message to all users in the room
+      io.to(roomId).emit('chatMessage', {
+        userId: socket.id,
+        message: data.message,
+        timestamp: Date.now(),
+        username: username
+      });
+    } catch (error) {
+      log('Error in chatMessage handler:', error);
+      socket.emit('error', { message: 'Failed to send chat message' });
+    }
+  });
+
   socket.on('disconnect', () => {
     try {
       const roomId = socket.data.roomId;

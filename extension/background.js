@@ -71,6 +71,48 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // If count is -1, this is just a notification that peers have changed
       // No action needed, the content script will handle the actual count
       break;
+      
+    case 'newChatMessage':
+      // Display notification for new chat messages
+      if (tabId && request.data) {
+        // Don't notify for your own messages
+        if (!request.data.isOwnMessage) {
+          // Update badge with a "chat" indicator
+          chrome.action.setBadgeText({
+            text: '💬',
+            tabId: tabId
+          });
+          
+          // Reset badge after 3 seconds
+          setTimeout(() => {
+            // Check if tab is still connected before resetting
+            chrome.tabs.sendMessage(tabId, { type: 'getPartyState' }, (response) => {
+              if (chrome.runtime.lastError) {
+                return; // Tab might be closed
+              }
+              
+              if (response && response.connected) {
+                chrome.action.setBadgeText({
+                  text: '✓',
+                  tabId: tabId
+                });
+              }
+            });
+          }, 3000);
+          
+          // If permission granted, show OS notification
+          if (sender.tab?.url && request.data.username && request.data.message) {
+            chrome.notifications.create({
+              type: 'basic',
+              iconUrl: 'icons/icon128.png',
+              title: 'BluTV Party - ' + request.data.username,
+              message: request.data.message,
+              silent: false
+            });
+          }
+        }
+      }
+      break;
   }
   
   return true;
