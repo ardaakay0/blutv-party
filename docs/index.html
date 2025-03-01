@@ -1,88 +1,122 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Install BluTV Party Extension</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BluTV Party Extension</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
-            line-height: 1.6;
+            background-color: #f5f5f5;
         }
         .container {
-            background: #f5f5f5;
+            background-color: white;
             border-radius: 8px;
-            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            margin-top: 30px;
+        }
+        h1 {
+            color: #5865F2;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .download-button {
+            display: block;
+            background-color: #5865F2;
+            color: white;
+            text-align: center;
+            padding: 15px 25px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 18px;
+            margin: 40px auto;
+            width: 200px;
+            transition: background-color 0.2s;
+        }
+        .download-button:hover {
+            background-color: #4752c4;
+        }
+        .features {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            margin: 40px 0;
+        }
+        .feature {
+            flex-basis: 30%;
+            text-align: center;
+            padding: 10px;
+        }
+        .feature h3 {
+            color: #5865F2;
+        }
+        .instructions {
+            background-color: #f9f9f9;
+            border-left: 4px solid #5865F2;
+            padding: 15px;
             margin: 20px 0;
         }
-        .step {
-            margin-bottom: 15px;
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
+            font-size: 14px;
         }
-        .download-btn {
-            display: inline-block;
-            background: #007bff;
-            color: white;
-            padding: 10px 20px;
-            text-decoration: none;
-            border-radius: 5px;
-            margin: 10px 0;
-        }
-        .download-btn:hover {
-            background: #0056b3;
-        }
-        img {
-            max-width: 100%;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            margin: 10px 0;
+        @media (max-width: 600px) {
+            .feature {
+                flex-basis: 100%;
+            }
         }
     </style>
 </head>
 <body>
-    <h1>BluTV Party Extension Installation Guide</h1>
-    
     <div class="container">
-        <h2>Quick Install Steps:</h2>
-        <div class="step">
-            <h3>1. Download the Extension</h3>
-            <a href="blutv-party.zip" class="download-btn" download>Download BluTV Party Extension</a>
+        <h1>BluTV Party Extension</h1>
+        <p class="subtitle">Watch BluTV videos together with friends in perfect sync</p>
+        
+        <a href="extension.zip" class="download-button">Download Extension</a>
+        
+        <div class="features">
+            <div class="feature">
+                <h3>Sync Videos</h3>
+                <p>Watch videos in perfect synchronization with your friends</p>
+            </div>
+            <div class="feature">
+                <h3>Chat</h3>
+                <p>Talk with your friends while watching</p>
+            </div>
+            <div class="feature">
+                <h3>Easy Setup</h3>
+                <p>Just a few simple steps to get started</p>
+            </div>
         </div>
         
-        <div class="step">
-            <h3>2. Extract the ZIP file</h3>
-            <p>After downloading, extract the ZIP file to a folder on your computer.</p>
-        </div>
-        
-        <div class="step">
-            <h3>3. Install in Chrome</h3>
+        <div class="instructions">
+            <h3>Quick Install Guide:</h3>
             <ol>
-                <li>Open Chrome and go to <code>chrome://extensions</code></li>
-                <li>Enable "Developer mode" in the top right corner</li>
-                <li>Click "Load unpacked"</li>
-                <li>Select the folder where you extracted the extension files</li>
+                <li>Download the extension using the button above</li>
+                <li>Open Chrome and go to <code>chrome://extensions/</code></li>
+                <li>Enable "Developer mode" (toggle in the top-right)</li>
+                <li>Drag and drop the <code>extension.zip</code> file onto the extensions page</li>
+                <li>Visit our <a href="https://github.com/username/blutv-party">GitHub repository</a> for full instructions</li>
             </ol>
         </div>
     </div>
-
-    <div class="container">
-        <h2>How to Use:</h2>
-        <ol>
-            <li>Go to any video on BluTV</li>
-            <li>Click the extension icon in Chrome</li>
-            <li>Create a room or join an existing one</li>
-            <li>Share the room ID with friends</li>
-            <li>Enjoy watching together!</li>
-        </ol>
-    </div>
-
-    <div class="container">
-        <h2>Troubleshooting:</h2>
-        <ul>
-            <li>Make sure everyone is on the same video page</li>
-            <li>If the extension stops working, try clicking the extension icon and rejoining the room</li>
-            <li>If problems persist, try removing and reinstalling the extension</li>
-        </ul>
-    </div>
+    
+    <footer>
+        <p>BluTV Party Extension © 2023 | <a href="https://github.com/username/blutv-party">View on GitHub</a></p>
+    </footer>
 </body>
 </html> 

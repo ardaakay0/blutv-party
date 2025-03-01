@@ -41,6 +41,16 @@ https://abc123.ngrok.io
 
 ### Step 2: Install the Extension (Everyone)
 
+#### Download the Extension
+
+The easiest way to get the extension is to download it directly from our website:
+
+1. Go to [https://username.github.io/blutv-party](https://username.github.io/blutv-party)
+2. Click the "Download Extension" button
+3. Follow the installation instructions on the page
+
+#### Manual Installation
+
 1. Download this extension
 2. Open Chrome and go to `chrome://extensions/`
 3. Enable "Developer mode" (toggle in the top-right corner)
