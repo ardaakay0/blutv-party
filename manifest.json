@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "BluTV Sync",
+  "version": "1.0",
+  "description": "Watch BluTV content synchronously with friends",
+  "permissions": [
+    "tabs",
+    "storage"
+  ],
+  "host_permissions": [
+    "*://*.blutv.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.blutv.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+} 
