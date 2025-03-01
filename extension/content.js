@@ -36,17 +36,53 @@ function initializeConnection() {
 function createPeerConnection(peerId) {
     const peerConnection = new RTCPeerConnection({
         iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' }
-        ]
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            {
+                urls: 'turn:a.relay.metered.ca:80',
+                username: '83ee56d5b5e9c11988b65a19',
+                credential: 'eA+qWdcVQEZGTLZa',
+            },
+            {
+                urls: 'turn:a.relay.metered.ca:443',
+                username: '83ee56d5b5e9c11988b65a19',
+                credential: 'eA+qWdcVQEZGTLZa',
+            },
+            {
+                urls: 'turn:a.relay.metered.ca:443?transport=tcp',
+                username: '83ee56d5b5e9c11988b65a19',
+                credential: 'eA+qWdcVQEZGTLZa',
+            }
+        ],
+        iceCandidatePoolSize: 10
     });
 
+    // Log ICE connection state changes
+    peerConnection.oniceconnectionstatechange = () => {
+        console.log('ICE connection state:', peerConnection.iceConnectionState);
+        if (peerConnection.iceConnectionState === 'failed') {
+            console.log('ICE connection failed, attempting restart...');
+            peerConnection.restartIce();
+        }
+    };
+
+    // Log signaling state changes
+    peerConnection.onsignalingstatechange = () => {
+        console.log('Signaling state:', peerConnection.signalingState);
+    };
+
     // Create data channel for synchronization
-    const dataChannel = peerConnection.createDataChannel('sync');
+    const dataChannel = peerConnection.createDataChannel('sync', {
+        ordered: true,
+        maxRetransmits: 3
+    });
     setupDataChannel(dataChannel);
     dataChannels.set(peerId, dataChannel);
 
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
+            console.log('New ICE candidate:', event.candidate.candidate);
             // Send ICE candidate to peer through extension messaging
             chrome.runtime.sendMessage({
                 type: 'relayICECandidate',
@@ -57,6 +93,7 @@ function createPeerConnection(peerId) {
     };
 
     peerConnection.ondatachannel = (event) => {
+        console.log('Received data channel');
         setupDataChannel(event.channel);
     };
 
