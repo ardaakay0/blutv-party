@@ -286,7 +286,7 @@ io.on('connection', (socket) => {
   });
 });
 
-const port = process.env.PORT || 8080;
+const port = process.env.PORT || 3000;
 httpServer.listen(port, () => {
   log(`Server running on port ${port}`);
   

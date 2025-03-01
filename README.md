@@ -31,9 +31,9 @@ npm start
 
 When the server starts, it will display its IP address and port like this:
 ```
-Server running on port 8080
+Server running on port 3000
 Available on:
-  http://192.168.1.5:8080
+  http://192.168.1.5:3000
 ```
 
 **IMPORTANT**: Note down this IP address - this is what everyone will need to use to connect to your server, NOT "localhost".
@@ -49,7 +49,7 @@ Available on:
 
 1. Navigate to any BluTV video
 2. Click the BluTV Party extension icon
-3. Enter the server URL - use the IP address shown when you started the server, like: `http://192.168.1.5:8080`
+3. Enter the server URL - use the IP address shown when you started the server, like: `http://192.168.1.5:3000`
 4. Click "Create New Room"
 5. Share the Room ID with your friends
 
@@ -75,13 +75,13 @@ To connect with people on different networks:
 
 #### Option 1: Port Forwarding
 1. Access your router's admin panel (usually http://192.168.1.1)
-2. Set up port forwarding for port 8080 to your computer
+2. Set up port forwarding for port 3000 to your computer
 3. Find your public IP (visit whatismyip.com)
-4. Share this public IP with port 8080 with others (http://your.public.ip:8080)
+4. Share this public IP with port 3000 with others (http://your.public.ip:3000)
 
 #### Option 2: Use ngrok (Easiest)
 1. Install [ngrok](https://ngrok.com/)
-2. Run `ngrok http 8080`
+2. Run `ngrok http 3000`
 3. Share the https URL ngrok provides
 4. Everyone uses this URL for the server connection
 
@@ -92,10 +92,10 @@ For a permanent solution, deploy the server to a cloud provider like AWS, Google
 
 ### Changing the Server Port
 
-If port 8080 is already in use:
+If port 3000 is already in use:
 
 1. Edit the `server/server.js` file
-2. Change the port number in the line: `const port = process.env.PORT || 8080;`
+2. Change the port number in the line: `const port = process.env.PORT || 3000;`
 3. Restart the server
 
 ## Troubleshooting

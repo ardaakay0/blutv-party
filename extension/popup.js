@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentTabId = null;
     let currentUrl = null;
     let contentScriptLoaded = false;
-    const DEFAULT_SERVER_URL = 'http://localhost:8080';
+    const DEFAULT_SERVER_URL = 'http://localhost:3000';
 
     // Generate a random room ID
     function generateRoomId() {
