@@ -47,15 +47,21 @@ const httpServer = createServer(app);
 // Configure Socket.IO with all necessary options
 const io = new Server(httpServer, {
   cors: {
-    origin: '*',  // Allow any origin during development
+    origin: '*',
     methods: ["GET", "POST"],
     credentials: true
   },
-  transports: ['websocket', 'polling'], // Allow both WebSocket and polling
-  allowEIO3: true, // Enable Engine.IO v3 compatibility
-  path: '/socket.io/', // Explicit path
-  pingTimeout: 60000, // Increase ping timeout
-  pingInterval: 25000 // Increase ping interval
+  transports: ['websocket', 'polling'],
+  allowEIO3: true,
+  path: '/socket.io/',
+  pingTimeout: 120000, // Increased from 60000
+  pingInterval: 25000,
+  connectTimeout: 45000, // Added connection timeout
+  maxHttpBufferSize: 1e8, // Increased buffer size
+  reconnection: true, // Explicitly enable reconnection
+  reconnectionAttempts: 5, // Number of reconnection attempts
+  reconnectionDelay: 1000, // Initial delay between reconnection attempts
+  reconnectionDelayMax: 5000 // Maximum delay between reconnection attempts
 });
 
 // Store active rooms and their participants
@@ -325,6 +331,16 @@ io.on('connection', (socket) => {
       log('Error in disconnect handler:', error);
     }
   });
+});
+
+// Add error handling for the server
+httpServer.on('error', (error) => {
+  log('Server error:', error);
+});
+
+// Add error handling for Socket.IO
+io.engine.on('connection_error', (error) => {
+  log('Connection error:', error);
 });
 
 const port = process.env.PORT || 3000;
