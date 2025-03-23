@@ -15,7 +15,9 @@ sudo npm install -g pm2
 
 # Install project dependencies
 echo "Installing project dependencies..."
+cd server
 npm install
+cd ..
 
 # Start the application with PM2
 echo "Starting application with PM2..."
